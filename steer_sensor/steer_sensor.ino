@@ -7,7 +7,7 @@
 const char* WIFI_SSID = "Galaxy A05 AL";
 const char* WIFI_PASS = "whywifi1";
 
-const char* MQTT_BROKER = "10.222.114.50";
+const char* MQTT_BROKER = "10.236.80.50";
 const int   MQTT_PORT   = 1883;
 
 const char* DEVICE_ID  = "VEH_001";

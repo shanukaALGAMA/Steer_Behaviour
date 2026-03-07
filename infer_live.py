@@ -3,14 +3,18 @@ import tensorflow as tf
 import paho.mqtt.client as mqtt
 from collections import deque
 import json
+from driver_profiler import DriverProfiler
+from instant_detector import InstantDetector
 
-BROKER = "localhost"
+BROKER = "10.236.80.50"
 PORT = 1883
 TOPIC = "vehicle/+/angle"
 WINDOW_SIZE = 100
 
 LABELS = ["SAFE", "FAST", "UNSTABLE"]
 DEVICE_BUFFERS = {}
+PROFILERS = {}
+INSTANT_DETECTORS = {}
 
 print("Loading the model...")
 model = tf.keras.models.load_model("steering_model.keras")
@@ -39,10 +43,37 @@ def on_message(client, userdata, msg):
 
         if device_id not in DEVICE_BUFFERS:
             DEVICE_BUFFERS[device_id] = deque(maxlen=WINDOW_SIZE)
+            INSTANT_DETECTORS[device_id] = InstantDetector()
 
         buf = DEVICE_BUFFERS[device_id]
         buf.append(angle)
+        
+        # --- 1. INSTANTANEOUS PHYSICS DETECTION (1.5s Sliding Window) ---
+        instant_detector = INSTANT_DETECTORS[device_id]
+        instant_alert = instant_detector.analyze(angle)
+        
+        if instant_alert:
+            print(f"\n[{device_id}] {instant_alert}\n")
+            
+            # Broadcast the anomaly immediately with current profile stats
+            if device_id in PROFILERS:
+                prof = PROFILERS[device_id]
+                st_m = prof.st_mean
+                lt_m = prof.lt_mean
+                rnk = prof.last_rank
+            else:
+                st_m, lt_m, rnk = 100.0, 100.0, "S"
 
+            profile_payload = {
+                "device_id": device_id,
+                "st_mean": st_m,
+                "lt_mean": lt_m,
+                "rank": rnk,
+                "alerts": [instant_alert]
+            }
+            client.publish(f"vehicle/{device_id}/profile", json.dumps(profile_payload))
+
+        # --- 2. DEEP LEARNING PROFILING (5s Tumbling Window) ---
         if len(buf) == WINDOW_SIZE:
             run_inference(device_id, buf)
 
@@ -57,6 +88,26 @@ def run_inference(device_id, buffer):
     confidence = np.max(preds)
 
     print(f"[{device_id}] Prediction: {label} (confidence={confidence:.2f})")
+
+    # ----- Continuous Driver Profiling -----
+    if device_id not in PROFILERS:
+        PROFILERS[device_id] = DriverProfiler(device_id)
+    
+    profiler = PROFILERS[device_id]
+    notifications = profiler.update(label)
+    
+    for notification in notifications:
+        print(f"\n[{device_id}] {notification}\n")
+
+    # ----- Broadcast Profile to Flutter App over MQTT -----
+    profile_payload = {
+        "device_id": device_id,
+        "st_mean": profiler.st_mean,
+        "lt_mean": profiler.lt_mean,
+        "rank": profiler.last_rank,
+        "alerts": notifications
+    }
+    client.publish(f"vehicle/{device_id}/profile", json.dumps(profile_payload))
 
 client = mqtt.Client()
 client.on_connect = on_connect
