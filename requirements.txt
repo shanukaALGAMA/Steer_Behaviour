@@ -1,3 +1,6 @@
 numpy
 tensorflow
 paho-mqtt
+aiohttp
+pandas
+pillow
