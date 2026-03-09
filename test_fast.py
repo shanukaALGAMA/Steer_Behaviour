@@ -11,8 +11,10 @@ client.connect(BROKER, 1883, 60)
 
 print("Sending FAST steering data...")
 
-# Large-amplitude, rapid changes (FAST)
-angles = np.cumsum(np.random.normal(0, 2.5, 200))
+# Large-amplitude, held sharp turn (FAST)
+time_steps = np.arange(200)
+angles = np.full(200, 35.0)
+angles += np.random.randint(-3, 4, 200) # add human jitter
 
 for a in angles:
     payload = {"angle": float(a)}

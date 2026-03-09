@@ -11,9 +11,12 @@ client.connect(BROKER, 1883, 60)
 
 print("Sending UNSTABLE steering data...")
 
-# High-frequency sine + noise (UNSTABLE)
-angles = np.cumsum(np.random.normal(0, 2.0, 200))
-angles += np.random.normal(0, 4.0, 200)
+# High-frequency sine + noise (UNSTABLE / Fishtailing)
+time_steps = np.arange(200)
+freq = 0.2
+amplitude = 50.0
+angles = amplitude * np.sin(freq * time_steps)
+angles += np.random.randint(-10, 11, 200) # add jerky noise
 
 for a in angles:
     payload = {"angle": float(a)}

@@ -1,0 +1,142 @@
+====================================================================
+           STEERING BEHAVIOUR ANALYSIS - FULL SETUP GUIDE
+====================================================================
+
+This guide will walk you through setting up the Steering Behaviour
+project on a brand-new Windows PC, including troubleshooting
+common installation issues and step-by-step running instructions.
+
+--------------------------------------------------------------------
+PART 1: PREREQUISITES & TROUBLESHOOTING
+--------------------------------------------------------------------
+
+1. INSTALL PYTHON 3.12
+   - Go to python.org and download Python 3.12 (TensorFlow requires
+     specific versions; 3.12 is highly recommended).
+   - ***CRITICAL***: During installation, you MUST check the box
+     that says "Add Python.exe to PATH" at the bottom of the window
+     before clicking Install.
+
+   > TROUBLESHOOTING "Python is not recognized":
+   If you type "python" in the terminal and get an error, it means
+   Python isn't in your PATH.
+   Fix: Press Windows Key -> type "Environment Variables" -> Click
+   "Edit the system environment variables" -> Click "Environment Variables".
+   Under "System variables", double-click "Path". Click "New" and add:
+   C:\Users\<YourUsername>\AppData\Local\Programs\Python\Python313\
+   (Or wherever your Python is installed). Restart your terminal.
+
+2. INSTALL FLUTTER SDK
+   - Download the Flutter Windows SDK from flutter.dev.
+   - Extract it to a permanent location (e.g., C:\src\flutter).
+   - Add the Flutter 'bin' folder to your System PATH just like
+     the Python troubleshooting step above (e.g., C:\src\flutter\bin).
+   - Run `flutter doctor` in a terminal to verify the installation.
+
+--------------------------------------------------------------------
+PART 2: INITIAL SETUP (Do this once on the new PC)
+--------------------------------------------------------------------
+
+1. Setup the Python Virtual Environment:
+   Open a terminal in the "Steer_Behaviour" folder and run:
+   > python -m venv venv
+
+2. Activate the Virtual Environment:
+   Run this command to activate the environment:
+   > .\venv\Scripts\Activate.ps1
+   (You should see "(venv)" appear on the left side of your terminal).
+
+3. Install the Python Dependencies:
+   > pip install -r requirements.txt
+
+4. Install Mosquitto MQTT Broker:
+   Install Mosquitto on the PC. You can easily do this via winget:
+   > winget install EclipseFoundation.Mosquitto
+   We already have the "mosquitto.conf" file in the project folder, 
+   so the broker configuration is complete!
+
+5. Get the Flutter App Ready:
+   Open a terminal in the "driver_companion" folder and run:
+   > flutter pub get
+
+
+====================================================================
+PART 3: HOW TO RUN THE SYSTEM (Two Different Modes)
+====================================================================
+
+You must always run these commands in separate terminal windows.
+
+--------------------------------------------------------------------
+MODE A: Running with the Real ESP32 Hardware Sensor
+--------------------------------------------------------------------
+Use this mode when you have the ESP32 hooked up to the steering wheel.
+
+STEP 1: Start the MQTT Broker
+Open an Administrator PowerShell in the "Steer_Behaviour" folder:
+> & "C:\Program Files\mosquitto\mosquitto.exe" -c ".\mosquitto.conf" -v
+
+STEP 2: Start the AI Dashboard
+Open a second terminal, activate the venv (.\venv\Scripts\Activate), and run:
+> python .\infer_live.py
+(The console will print out a massive "AUTO-DETECTED BROKER IP". 
+ Copy that IP address!)
+
+STEP 3: Flash the ESP32
+Open "steer_sensor.ino" in the Arduino IDE. 
+Change `const char* MQTT_BROKER = "10.X.X.X";` to the IP address 
+you just copied from Step 2. Plug in the ESP32 and click Upload.
+
+STEP 4: Launch the Flutter Companion App
+Open a third terminal inside "driver_companion" and run:
+> flutter run -d chrome
+(The web app will open, connect to the broker, and show live data!)
+
+
+--------------------------------------------------------------------
+MODE B: Running with the Python Simulator (No Hardware Needed)
+--------------------------------------------------------------------
+Use this mode when you are coding on a laptop and don't have the 
+physical ESP32 sensor hardware with you.
+
+STEP 1: Start the MQTT Broker
+Open an Administrator PowerShell in the "Steer_Behaviour" folder:
+> & "C:\Program Files\mosquitto\mosquitto.exe" -c ".\mosquitto.conf" -v
+
+STEP 2: Start the AI Dashboard
+Open a second terminal, activate the venv (.\venv\Scripts\Activate), and run:
+> python .\infer_live.py
+
+STEP 3: Launch the Flutter Companion App
+Open a third terminal inside "driver_companion" and run:
+> flutter run -d chrome
+
+STEP 4: Start the Live Simulator
+Open a fourth terminal, activate the venv (.\venv\Scripts\Activate), and run:
+> python .\simulate_driver.py
+
+(The simulator will instantly begin broadcasting realistic 20Hz 
+ steering physics, and the Flutter app will immediately spring to life!)
+
+
+
+
+
+
+
+How to Run
+1 — Start the Python server
+powershell
+cd c:\Users\shanu\Documents\steeeer\Steer_Behaviour
+.\venv\Scripts\python infer_live.py
+The terminal will print:
+
+📡 HTTP/WS SERVER:  http://192.168.x.x:8765
+   WS  :  ws://192.168.x.x:8765/ws
+   👉 Use '192.168.x.x:8765' in your Flutter app!
+2 — Enter the IP in the Flutter app
+Open Settings tab → paste the IP:port → tap Connect.
+
+3 — Run the Flutter app
+powershell
+cd driver_companion
+flutter run

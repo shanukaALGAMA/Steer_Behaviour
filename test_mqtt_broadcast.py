@@ -2,8 +2,19 @@ import time
 import json
 import paho.mqtt.client as mqtt
 import random
+import socket
 
-BROKER = "10.236.80.50"
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+BROKER = get_local_ip()
 PORT = 1883
 TOPIC = "vehicle/VEH_001/profile"
 

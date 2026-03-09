@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
-import 'mqtt_service.dart';
+import 'package:provider/provider.dart';
+import 'providers/profile_provider.dart';
+import 'screens/dashboard_screen.dart';
+import 'screens/settings_screen.dart';
 
 void main() {
   runApp(const DriverCompanionApp());
@@ -12,241 +14,100 @@ class DriverCompanionApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SEIDS Driver Profiler',
+      title: 'Driver Companion',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.blueAccent,
-          surface: Color(0xFF1E1E2C),
-          background: Color(0xFF12121A),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6C63FF),
+          brightness: Brightness.dark,
         ),
         useMaterial3: true,
+        fontFamily: 'Roboto',
       ),
-      home: const DashboardScreen(),
+      home: const _AppRoot(),
     );
   }
 }
 
-class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
-
+class _AppRoot extends StatefulWidget {
+  const _AppRoot();
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<_AppRoot> createState() => _AppRootState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  final MqttService _mqttService = MqttService();
-
-  DriverProfile? _currentProfile;
-  List<double> _stHistory = [];
+class _AppRootState extends State<_AppRoot> {
+  // Default host — user can change via settings
+  String _host = '192.168.1.100:8765';
+  ProfileProvider? _provider;
 
   @override
   void initState() {
     super.initState();
-    _connectMqtt();
+    _provider = ProfileProvider(_host);
   }
 
-  void _connectMqtt() async {
-    await _mqttService.connect();
-    _mqttService.profileStream.listen((profile) {
-      setState(() {
-        _currentProfile = profile;
-        if (_stHistory.length > 50) _stHistory.removeAt(0);
-        _stHistory.add(profile.stMean);
-      });
-
-      // Show banners for drift alerts
-      for (var alert in profile.alerts) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                alert,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: alert.contains("degraded")
-                  ? Colors.redAccent
-                  : Colors.green,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-        }
-      }
+  void _onHostChanged(String newHost) {
+    _provider?.dispose();
+    setState(() {
+      _host = newHost;
+      _provider = ProfileProvider(newHost);
     });
   }
 
-  Color _getRankColor(String rank) {
-    if (rank.contains("S")) return Colors.purpleAccent;
-    if (rank.contains("A")) return Colors.greenAccent;
-    if (rank.contains("B")) return Colors.lightBlueAccent;
-    if (rank.contains("C")) return Colors.orangeAccent;
-    return Colors.redAccent;
+  @override
+  void dispose() {
+    _provider?.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_currentProfile == null) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 20),
-              Text(
-                'Connecting to Vehicle MQTT...',
-                style: TextStyle(fontSize: 18, color: Colors.grey),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final p = _currentProfile!;
-    final rankColor = _getRankColor(p.rank);
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Driver ID: ${p.deviceId}'),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Rank Display
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 40),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: rankColor.withOpacity(0.2),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'LIFETIME RANK',
-                      style: TextStyle(
-                        fontSize: 16,
-                        letterSpacing: 2,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      p.rank,
-                      style: TextStyle(
-                        fontSize: 48,
-                        fontWeight: FontWeight.w900,
-                        color: rankColor,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 40),
-
-              // Stats
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildStatCard(
-                      'Trip Average',
-                      p.stMean,
-                      Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  Expanded(
-                    child: _buildStatCard('Lifetime Avg', p.ltMean, rankColor),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 40),
-
-              // Live Chart
-              const Text(
-                'LIVE TRIP SAFETY',
-                style: TextStyle(
-                  fontSize: 16,
-                  letterSpacing: 2,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: LineChart(
-                    LineChartData(
-                      gridData: FlGridData(show: false),
-                      titlesData: FlTitlesData(show: false),
-                      borderData: FlBorderData(show: false),
-                      minY: 0,
-                      maxY: 100,
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: _stHistory
-                              .asMap()
-                              .entries
-                              .map((e) => FlSpot(e.key.toDouble(), e.value))
-                              .toList(),
-                          isCurved: true,
-                          color: Colors.blueAccent,
-                          barWidth: 4,
-                          isStrokeCapRound: true,
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: Colors.blueAccent.withOpacity(0.2),
-                          ),
-                          dotData: FlDotData(show: false),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return ChangeNotifierProvider.value(
+      value: _provider!,
+      child: _MainNav(host: _host, onHostChanged: _onHostChanged),
     );
   }
+}
 
-  Widget _buildStatCard(String title, double value, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(20),
+class _MainNav extends StatefulWidget {
+  final String host;
+  final void Function(String) onHostChanged;
+  const _MainNav({required this.host, required this.onHostChanged});
+
+  @override
+  State<_MainNav> createState() => _MainNavState();
+}
+
+class _MainNavState extends State<_MainNav> {
+  int _index = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      const DashboardScreen(),
+      SettingsScreen(
+        currentHost: widget.host,
+        onHostChanged: widget.onHostChanged,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.grey, fontSize: 14)),
-          const SizedBox(height: 8),
-          Text(
-            '${value.toStringAsFixed(1)} / 100',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+    ];
+
+    return Scaffold(
+      body: screens[_index],
+      bottomNavigationBar: NavigationBar(
+        backgroundColor: const Color(0xFF0D1220),
+        indicatorColor: const Color(0xFF6C63FF).withAlpha(64),
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: Color(0xFF6C63FF)),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings, color: Color(0xFF6C63FF)),
+            label: 'Settings',
           ),
         ],
       ),

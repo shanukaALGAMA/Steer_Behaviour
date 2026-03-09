@@ -1,6 +1,7 @@
 import json
 import os
 import math
+import time
 
 class DriverProfiler:
     """
@@ -37,6 +38,7 @@ class DriverProfiler:
         self.total_samples = 0
 
         self.last_rank = None
+        self.last_save_time = time.time()
         self.load_profile()
 
     def load_profile(self):
@@ -81,11 +83,11 @@ class DriverProfiler:
         """Assign a rank based on the score."""
         if score is None:
             return "Unranked"
-        if score >= 90: return "Rank S (Elite)"
-        if score >= 80: return "Rank A (Excellent)"
-        if score >= 65: return "Rank B (Good)"
-        if score >= 50: return "Rank C (Average)"
-        if score >= 35: return "Rank D (Aggressive)"
+        if score >= 95.0: return "Rank S (Elite)"
+        if score >= 85.0: return "Rank A (Excellent)"
+        if score >= 70.0: return "Rank B (Good)"
+        if score >= 50.0: return "Rank C (Average)"
+        if score >= 35.0: return "Rank D (Aggressive)"
         return "Rank F (Dangerous)"
 
     def update(self, label):
@@ -93,8 +95,18 @@ class DriverProfiler:
         Process a new prediction label.
         Returns a list of notification strings (if any events occurred).
         """
-        score = self.SCORE_MAP.get(label, 50.0)
         notifications = []
+
+        # If vehicle is stopped, do not apply any rank changes or learn anything new
+        if label == "NONE":
+            # Periodically save progress to disk (strictly every 30 seconds)
+            current_time = time.time()
+            if current_time - self.last_save_time >= 30.0:
+                self.save_profile()
+                self.last_save_time = current_time
+            return notifications
+
+        score = self.SCORE_MAP.get(label, 50.0)
 
         # Initialization Phase
         if self.lt_mean is None:
@@ -113,10 +125,14 @@ class DriverProfiler:
 
         # 2. Update Long-Term (Lifetime) Memory (Welford's online algorithm for variance/EMA)
         diff = score - self.lt_mean
-        self.lt_mean = (self.alpha_long * score) + ((1 - self.alpha_long) * self.lt_mean)
+        
+        # Asymmetric Penalty: If the event score is worse than the historical average, learn 10x faster (penalize heavily)
+        current_alpha_long = min(1.0, self.alpha_long * 10) if score < self.lt_mean else self.alpha_long
+        
+        self.lt_mean = (current_alpha_long * score) + ((1 - current_alpha_long) * self.lt_mean)
         
         # Incremental variance for Z-Score
-        self.lt_var = (1 - self.alpha_long) * (self.lt_var + self.alpha_long * (diff ** 2))
+        self.lt_var = (1 - current_alpha_long) * (self.lt_var + current_alpha_long * (diff ** 2))
 
         # 3. Concept Drift Detection (Z-Score)
         # Avoid division by zero early on
@@ -144,8 +160,10 @@ class DriverProfiler:
             notifications.append(f"\U0001f3c6 RANK UPDATE: Your driving rank changed from {self.last_rank} to {current_rank}!")
         self.last_rank = current_rank
 
-        # Periodically save progress to disk (every 100 samples)
-        if self.total_samples % 100 == 0:
+        # Periodically save progress to disk (strictly every 30 seconds)
+        current_time = time.time()
+        if current_time - self.last_save_time >= 30.0:
             self.save_profile()
+            self.last_save_time = current_time
 
         return notifications
